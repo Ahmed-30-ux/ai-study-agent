@@ -3,10 +3,11 @@ load_dotenv()
 
 import streamlit as st
 import time
+import math
 
 from src.agent import (
     Trace, plan, research, synthesize,
-    generate_quiz, adapt, answer_question
+    generate_quiz, adapt, answer_question, cheat_sheet
 )
 from src.llm import QuotaExceeded, LLMError
 from src.pdf_utils import export_pdf, extract_text_from_pdf
@@ -576,6 +577,7 @@ Near-term applications include quantum-enhanced machine learning, optimization p
         st.session_state.quiz_state = {}
         st.session_state.quiz_submitted = False
         st.session_state.chat_history = []
+        st.session_state.cheat_sheet_text = None
         st.rerun()
 
     col1, col2 = st.columns([1, 1])
@@ -583,7 +585,7 @@ Near-term applications include quantum-enhanced machine learning, optimization p
         start = st.button("🚀 Start Learning", type="primary", use_container_width=True, disabled=not topic.strip())
     with col2:
         if st.button("🔄 Reset", use_container_width=True):
-            for k in ["quiz_state", "quiz_submitted", "study_data", "phase", "pdf_text", "chat_history"]:
+            for k in ["quiz_state", "quiz_submitted", "study_data", "phase", "pdf_text", "chat_history", "cheat_sheet_text"]:
                 if k in st.session_state:
                     del st.session_state[k]
             st.rerun()
@@ -661,7 +663,7 @@ if st.session_state.phase == "review" and st.session_state.study_data:
             st.markdown(f"**{i}.** {sub}")
 
     with st.expander("📖 Study Guide", expanded=True):
-        tab1, tab2 = st.tabs(["📖 Guide", "💬 AI Chat"])
+        tab1, tab2, tab3, tab4 = st.tabs(["📖 Guide", "🧠 Mind Map", "📋 Cheat Sheet", "💬 AI Chat"])
 
         with tab1:
             word_count = len(data["guide"].split())
@@ -691,6 +693,62 @@ if st.session_state.phase == "review" and st.session_state.study_data:
             )
 
         with tab2:
+            st.markdown("### 🧠 Topic Mind Map")
+            subtopics_list = data.get("subtopics", [])
+            topic_name = st.session_state.get("current_topic", topic)
+            mind_map_html = f"""
+            <div style="width:100%;height:400px;position:relative;overflow:hidden;border-radius:12px;background:radial-gradient(circle at center, rgba(99,102,241,0.05) 0%, transparent 70%);">
+            <svg width="100%" height="100%" viewBox="0 0 800 400" style="position:absolute;top:0;left:0;">
+                <defs>
+                    <filter id="glow"><feGaussianBlur stdDeviation="3" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                </defs>
+                <!-- Center topic -->
+                <circle cx="400" cy="200" r="50" fill="rgba(99,102,241,0.15)" stroke="#818cf8" stroke-width="2"/>
+                <text x="400" y="198" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">{topic_name[:30]}</text>
+                <text x="400" y="212" text-anchor="middle" fill="#818cf8" font-size="9">{topic_name[30:]}</text>
+                <!-- Subtopic nodes -->
+            """
+            angles = [0, 72, 144, 216, 288]
+            colors = ["#818cf8", "#4ade80", "#f472b6", "#fbbf24", "#34d399"]
+            for i, sub in enumerate(subtopics_list[:5]):
+                angle = angles[i]
+                rad = angle * 3.14159 / 180
+                x2 = 400 + 180 * math.cos(rad)
+                y2 = 200 + 180 * math.sin(rad)
+                mind_map_html += f"""
+                    <line x1="400" y1="200" x2="{x2:.0f}" y2="{y2:.0f}" stroke="{colors[i]}" stroke-width="1.5" opacity="0.4"/>
+                    <circle cx="{x2:.0f}" cy="{y2:.0f}" r="30" fill="{colors[i]}22" stroke="{colors[i]}" stroke-width="1.5"/>
+                    <text x="{x2:.0f}" y="{y2:.0f}" text-anchor="middle" fill="#e2e8f0" font-size="8" font-weight="600">
+                        <tspan x="{x2:.0f}" dy="-3">{sub[:12]}</tspan>
+                        <tspan x="{x2:.0f}" dy="10">{sub[12:24]}</tspan>
+                    </text>
+                """
+            mind_map_html += "</svg></div>"
+            st.markdown(mind_map_html, unsafe_allow_html=True)
+            st.caption("Visual overview of topic structure")
+
+        with tab3:
+            st.markdown("### 📋 Cheat Sheet")
+            if "cheat_sheet_text" not in st.session_state:
+                if st.button("✨ Generate Cheat Sheet", use_container_width=True):
+                    with st.spinner("Generating condensed summary..."):
+                        try:
+                            cs = cheat_sheet(data["guide"], st.session_state.get("current_topic", topic))
+                            st.session_state.cheat_sheet_text = cs
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+            if st.session_state.get("cheat_sheet_text"):
+                st.markdown(st.session_state.cheat_sheet_text)
+                st.download_button(
+                    "📥 Download Cheat Sheet",
+                    st.session_state.cheat_sheet_text,
+                    file_name=f"{st.session_state.get('current_topic', topic).replace(' ', '_')}_cheatsheet.md",
+                    mime="text/markdown",
+                    use_container_width=True,
+                )
+
+        with tab4:
             st.markdown("Ask questions about the study guide.")
             for msg in st.session_state.chat_history:
                 st.markdown(
@@ -878,8 +936,18 @@ if st.session_state.phase == "review" and st.session_state.study_data:
 
 # ─── History Sidebar ───
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 📜 Study History")
+st.sidebar.markdown("### 📊 Progress")
 sessions = get_sessions()
+if sessions:
+    scores = [s["correct"] / max(s["total"], 1) * 100 for s in sessions[-20:]]
+    avg = sum(scores) / len(scores)
+    st.sidebar.markdown(f"**Average score:** {avg:.0f}%")
+    st.sidebar.markdown(f"**Sessions:** {len(sessions)}")
+    st.sidebar.markdown(f"**Topics studied:** {len(set(s['topic'] for s in sessions))}")
+    chart_data = {"Score": scores}
+    st.sidebar.line_chart(chart_data, height=120)
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📜 Study History")
 if sessions:
     for s in sessions[:10]:
         st.sidebar.markdown(

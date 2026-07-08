@@ -144,3 +144,24 @@ Student: {question}"""
         temperature=0.4,
     )
     return result
+
+
+def cheat_sheet(guide: str, topic: str) -> str:
+    prompt = f"""Condense this study guide on "{topic}" into a one-page cheat sheet.
+
+Include:
+- 3-5 most important concepts (1 line each)
+- Key formulas / definitions
+- A quick reference table if applicable
+- Top 3 takeaways
+
+Keep it extremely concise — bullet points only. Aim for under 300 words.
+
+Study guide:
+{guide[:4000]}"""
+    result = llm.call(
+        "You are a summary expert. Extract only the most critical information.",
+        prompt,
+        temperature=0.3,
+    )
+    return result

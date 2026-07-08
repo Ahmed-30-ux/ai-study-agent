@@ -7,7 +7,6 @@ from io import BytesIO
 from fpdf import FPDF
 import pypdf
 
-# Emoji + extended Unicode pattern to strip out of PDF text
 EMOJI_PATTERN = re.compile(
     "["
     "\U0001F600-\U0001F64F" "\U0001F300-\U0001F5FF"
@@ -26,12 +25,14 @@ def _find_font():
     if platform.system() == "Windows":
         candidates = [
             ("C:\\Windows\\Fonts\\arial.ttf", "C:\\Windows\\Fonts\\arialbd.ttf"),
+            ("C:\\Windows\\Fonts\\calibri.ttf", "C:\\Windows\\Fonts\\calibrib.ttf"),
         ]
-    elif platform.system() == "Linux":
+    else:
         candidates = [
             ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
             ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
             ("/usr/share/fonts/TTF/DejaVuSans.ttf", "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf"),
+            ("/usr/share/fonts/noto/NotoSans-Regular.ttf", "/usr/share/fonts/noto/NotoSans-Bold.ttf"),
         ]
     for regular, bold in candidates:
         if os.path.exists(regular) and os.path.exists(bold):
@@ -39,31 +40,38 @@ def _find_font():
     return None, None
 
 
-FONT_PATH, FONT_BOLD_PATH = _find_font()
-USE_CUSTOM_FONT = FONT_PATH is not None
-
-
-def _clean(text: str) -> str:
+def _clean(text: str, use_unicode_font: bool = False) -> str:
     text = EMOJI_PATTERN.sub("", text)
     text = re.sub(r"\*\*", "", text)
+    if not use_unicode_font:
+        text = text.encode("latin-1", errors="replace").decode("latin-1")
     return text
 
 
 def export_pdf(topic: str, guide: str) -> BytesIO:
     pdf = FPDF()
     pdf.add_page()
+
+    font_regular, font_bold = _find_font()
     family = "Helvetica"
-    if USE_CUSTOM_FONT:
-        pdf.add_font("CustomFont", "", FONT_PATH, uni=True)
-        pdf.add_font("CustomFont", "B", FONT_BOLD_PATH, uni=True)
-        family = "CustomFont"
+    has_unicode = False
+
+    if font_regular and font_bold:
+        try:
+            pdf.add_font("AppFont", "", font_regular, uni=True)
+            pdf.add_font("AppFont", "B", font_bold, uni=True)
+            family = "AppFont"
+            has_unicode = True
+        except Exception:
+            family = "Helvetica"
+
     pdf.set_font(family, "B", 20)
-    pdf.multi_cell(0, 12, _clean(f"Study Guide: {topic}"))
+    pdf.multi_cell(0, 12, _clean(f"Study Guide: {topic}", has_unicode))
     pdf.ln(5)
     pdf.set_font(family, "", 11)
 
     for line in guide.split("\n"):
-        stripped = _clean(line.strip())
+        stripped = _clean(line.strip(), has_unicode)
         if not stripped:
             pdf.ln(3)
             continue

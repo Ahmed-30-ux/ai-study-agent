@@ -20,6 +20,13 @@ EMOJI_PATTERN = re.compile(
 )
 
 
+def _clean(text: str) -> str:
+    text = EMOJI_PATTERN.sub("", text)
+    text = re.sub(r"\*\*", "", text)
+    text = text.encode("latin-1", errors="replace").decode("latin-1")
+    return text
+
+
 def _find_font():
     candidates = []
     if platform.system() == "Windows":
@@ -32,7 +39,6 @@ def _find_font():
             ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
             ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
             ("/usr/share/fonts/TTF/DejaVuSans.ttf", "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf"),
-            ("/usr/share/fonts/noto/NotoSans-Regular.ttf", "/usr/share/fonts/noto/NotoSans-Bold.ttf"),
         ]
     for regular, bold in candidates:
         if os.path.exists(regular) and os.path.exists(bold):
@@ -40,38 +46,29 @@ def _find_font():
     return None, None
 
 
-def _clean(text: str, use_unicode_font: bool = False) -> str:
-    text = EMOJI_PATTERN.sub("", text)
-    text = re.sub(r"\*\*", "", text)
-    if not use_unicode_font:
-        text = text.encode("latin-1", errors="replace").decode("latin-1")
-    return text
-
-
 def export_pdf(topic: str, guide: str) -> BytesIO:
     pdf = FPDF()
     pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
 
     font_regular, font_bold = _find_font()
     family = "Helvetica"
-    has_unicode = False
 
     if font_regular and font_bold:
         try:
             pdf.add_font("AppFont", "", font_regular, uni=True)
             pdf.add_font("AppFont", "B", font_bold, uni=True)
             family = "AppFont"
-            has_unicode = True
         except Exception:
             family = "Helvetica"
 
     pdf.set_font(family, "B", 20)
-    pdf.multi_cell(0, 12, _clean(f"Study Guide: {topic}", has_unicode))
+    pdf.multi_cell(0, 12, _clean(f"Study Guide: {topic}"))
     pdf.ln(5)
     pdf.set_font(family, "", 11)
 
     for line in guide.split("\n"):
-        stripped = _clean(line.strip(), has_unicode)
+        stripped = _clean(line.strip())
         if not stripped:
             pdf.ln(3)
             continue
@@ -81,7 +78,10 @@ def export_pdf(topic: str, guide: str) -> BytesIO:
             pdf.multi_cell(0, 8, stripped.lstrip("#").strip())
             pdf.set_font(family, "", 11)
         else:
-            pdf.multi_cell(0, 6, stripped)
+            try:
+                pdf.multi_cell(0, 6, stripped)
+            except Exception:
+                pdf.multi_cell(0, 6, stripped.replace(".", " ").replace("-", " ").replace("/", " "))
 
     buf = BytesIO()
     pdf.output(buf)

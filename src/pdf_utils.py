@@ -24,6 +24,8 @@ def _clean(text: str) -> str:
     text = EMOJI_PATTERN.sub("", text)
     text = re.sub(r"\*\*", "", text)
     text = text.encode("latin-1", errors="replace").decode("latin-1")
+    text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
     return text
 
 

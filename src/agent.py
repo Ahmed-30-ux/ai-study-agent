@@ -126,3 +126,21 @@ Study guide for reference:
     )
     trace.add("adapt", prompt, result)
     return result
+
+
+def answer_question(question: str, guide: str, history: list[dict]) -> str:
+    ctx = f"""You are a tutor. Answer the student's question based on this study guide.
+
+Study guide:
+{guide[:3000]}
+
+Conversation so far:
+{chr(10).join(f"Student: {m['q']}\nTutor: {m['a']}" for m in history[-4:])}
+
+Student: {question}"""
+    result = llm.call(
+        "You are a helpful tutor. Answer concisely and reference the study guide.",
+        ctx,
+        temperature=0.4,
+    )
+    return result

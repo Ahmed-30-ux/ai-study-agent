@@ -6,13 +6,77 @@ import time
 
 from src.agent import (
     Trace, plan, research, synthesize,
-    generate_quiz, adapt
+    generate_quiz, adapt, answer_question
 )
 from src.llm import QuotaExceeded, LLMError
 from src.pdf_utils import export_pdf, extract_text_from_pdf
 from src.history import add_session, get_sessions
 
 st.set_page_config(page_title="AI Study Agent", page_icon="📚", layout="wide")
+
+# ─── Session State Init ───
+for key, default in [
+    ("quiz_state", {}), ("quiz_submitted", False), ("study_data", None),
+    ("phase", "input"), ("pdf_text", None), ("current_topic", None),
+    ("wrong", []), ("chat_history", []), ("flashcard_flipped", {}),
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
+
+if "theme" not in st.session_state:
+    st.session_state.theme = "dark"
+
+# ─── Theme toggle in sidebar ───
+with st.sidebar:
+    st.markdown("### ⚙️ Settings")
+    is_dark = st.session_state.theme == "dark"
+    theme_toggle = st.toggle(
+        "☀️ Light Mode" if is_dark else "🌙 Dark Mode",
+        value=is_dark,
+        key="sidebar_theme_toggle",
+    )
+    new_theme = "dark" if theme_toggle else "light"
+    if new_theme != st.session_state.theme:
+        st.session_state.theme = new_theme
+        st.rerun()
+
+# ─── Theme CSS Variables ───
+is_dark = st.session_state.theme == "dark"
+bg_primary = "#0b0e17" if is_dark else "#f0f2f6"
+bg_secondary = "rgba(15, 23, 42, 0.6)" if is_dark else "rgba(255, 255, 255, 0.6)"
+text_primary = "#e2e8f0" if is_dark else "#1e293b"
+text_secondary = "#cbd5e1" if is_dark else "#475569"
+text_muted = "#94a3b8" if is_dark else "#64748b"
+card_border = "rgba(99, 102, 241, 0.15)" if is_dark else "rgba(99, 102, 241, 0.2)"
+input_bg = "rgba(30, 41, 59, 0.8)" if is_dark else "rgba(255, 255, 255, 0.8)"
+sidebar_bg = "rgba(15, 23, 42, 0.85)" if is_dark else "rgba(255, 255, 255, 0.85)"
+quiz_bg = "rgba(30, 41, 59, 0.5)" if is_dark else "rgba(255, 255, 255, 0.5)"
+
+st.markdown(f"""
+<style>
+:root {{
+    --bg-primary: {bg_primary};
+    --bg-secondary: {bg_secondary};
+    --text-primary: {text_primary};
+    --text-secondary: {text_secondary};
+    --text-muted: {text_muted};
+    --card-border: {card_border};
+    --input-bg: {input_bg};
+    --sidebar-bg: {sidebar_bg};
+    --quiz-bg: {quiz_bg};
+}}
+
+/* Force dark theme regardless of Streamlit's built-in theme */
+.stApp, .main, .block-container, header, footer {{
+    background: transparent !important;
+}}
+.stApp {{ background: var(--bg-primary) !important; }}
+p, span, div, li, label, .stMarkdown, .stText {{
+    color: var(--text-primary) !important;
+}}
+a {{ color: #818cf8 !important; }}
+code {{ background: rgba(99,102,241,0.15) !important; color: #e2e8f0 !important; }}
+</style>""", unsafe_allow_html=True)
 
 # ─── Animated Background (CSS only) ───
 st.markdown("""
@@ -80,10 +144,10 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
 
-* { font-family: 'Inter', sans-serif; color: #e2e8f0; }
+* { font-family: 'Inter', sans-serif; }
 
 html, body, [data-testid="stAppViewContainer"], .main, .stApp {
-    background: #0b0e17 !important;
+    background: var(--bg-primary) !important;
 }
 
 .stApp {
@@ -109,16 +173,16 @@ html, body, [data-testid="stAppViewContainer"], .main, .stApp {
 }
 
 .main-header p {
-    color: #94a3b8;
+    color: var(--text-muted);
     font-size: 1.05rem;
     font-weight: 300;
 }
 
 .glass-card {
-    background: rgba(15, 23, 42, 0.6);
+    background: var(--bg-secondary);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(99, 102, 241, 0.15);
+    border: 1px solid var(--card-border);
     border-radius: 16px;
     padding: 1.5rem;
     margin-bottom: 1rem;
@@ -133,18 +197,18 @@ html, body, [data-testid="stAppViewContainer"], .main, .stApp {
 }
 
 .glass-card h2, .glass-card h3 {
-    color: #e2e8f0;
+    color: var(--text-primary);
     font-weight: 700;
 }
 
 .glass-card p, .glass-card li, .glass-card div {
-    color: #cbd5e1;
+    color: var(--text-secondary);
 }
 
 .stTextInput>div>div>input {
-    background: rgba(30, 41, 59, 0.8) !important;
-    border: 1px solid rgba(99, 102, 241, 0.2) !important;
-    color: #e2e8f0 !important;
+    background: var(--input-bg) !important;
+    border: 1px solid var(--card-border) !important;
+    color: var(--text-primary) !important;
     border-radius: 12px !important;
     padding: 0.75rem 1rem !important;
     font-size: 1rem !important;
@@ -157,9 +221,9 @@ html, body, [data-testid="stAppViewContainer"], .main, .stApp {
 }
 
 .stTextArea>div>div>textarea {
-    background: rgba(30, 41, 59, 0.8) !important;
-    border: 1px solid rgba(99, 102, 241, 0.2) !important;
-    color: #e2e8f0 !important;
+    background: var(--input-bg) !important;
+    border: 1px solid var(--card-border) !important;
+    color: var(--text-primary) !important;
     border-radius: 12px !important;
     transition: all 0.3s ease;
 }
@@ -189,14 +253,14 @@ html, body, [data-testid="stAppViewContainer"], .main, .stApp {
 }
 
 .stButton>button:not([kind="primary"]) {
-    background: rgba(30, 41, 59, 0.8) !important;
-    color: #94a3b8 !important;
-    border: 1px solid rgba(99, 102, 241, 0.2) !important;
+    background: var(--input-bg) !important;
+    color: var(--text-muted) !important;
+    border: 1px solid var(--card-border) !important;
 }
 
 .stButton>button:not([kind="primary"]):hover {
     border-color: #818cf8 !important;
-    color: #e2e8f0 !important;
+    color: var(--text-primary) !important;
 }
 
 .stButton>button:disabled {
@@ -204,14 +268,14 @@ html, body, [data-testid="stAppViewContainer"], .main, .stApp {
 }
 
 .stRadio>div {
-    background: rgba(30, 41, 59, 0.5) !important;
+    background: var(--quiz-bg) !important;
     border-radius: 12px !important;
     padding: 0.3rem;
 }
 
 .stRadio>div>label {
     background: transparent !important;
-    color: #cbd5e1 !important;
+    color: var(--text-secondary) !important;
     border: 1px solid transparent !important;
     border-radius: 8px !important;
     padding: 0.5rem 1rem !important;
@@ -226,21 +290,21 @@ html, body, [data-testid="stAppViewContainer"], .main, .stApp {
 .stRadio>div>label[data-checked="true"] {
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2)) !important;
     border-color: #818cf8 !important;
-    color: #e2e8f0 !important;
+    color: var(--text-primary) !important;
 }
 
 div[data-testid="stExpander"] {
-    background: rgba(15, 23, 42, 0.6) !important;
+    background: var(--bg-secondary) !important;
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(99, 102, 241, 0.15) !important;
+    border: 1px solid var(--card-border) !important;
     border-radius: 16px !important;
     margin-bottom: 1rem;
     overflow: hidden;
 }
 
 div[data-testid="stExpander"] summary {
-    color: #e2e8f0 !important;
+    color: var(--text-primary) !important;
     font-weight: 600;
     padding: 1rem 1.5rem !important;
 }
@@ -250,9 +314,9 @@ div[data-testid="stExpander"] div[role="group"] {
 }
 
 div[data-testid="stStatusWidget"] {
-    background: rgba(15, 23, 42, 0.8) !important;
+    background: var(--bg-secondary) !important;
     backdrop-filter: blur(20px);
-    border: 1px solid rgba(99, 102, 241, 0.2) !important;
+    border: 1px solid var(--card-border) !important;
     border-radius: 16px !important;
     padding: 1rem !important;
 }
@@ -262,13 +326,13 @@ div[data-testid="stStatusWidget"] {
 }
 
 div[data-testid="stSidebar"] {
-    background: rgba(15, 23, 42, 0.85) !important;
+    background: var(--sidebar-bg) !important;
     backdrop-filter: blur(24px);
     border-right: 1px solid rgba(99, 102, 241, 0.1);
 }
 
 div[data-testid="stSidebar"] p, div[data-testid="stSidebar"] span {
-    color: #cbd5e1 !important;
+    color: var(--text-secondary) !important;
 }
 
 @keyframes float {
@@ -286,7 +350,7 @@ div[data-testid="stSidebar"] p, div[data-testid="stSidebar"] span {
 }
 
 .quiz-question {
-    background: rgba(30, 41, 59, 0.5);
+    background: var(--quiz-bg);
     border: 1px solid rgba(99, 102, 241, 0.12);
     border-radius: 14px;
     padding: 1.2rem 1.5rem;
@@ -310,7 +374,7 @@ div[data-testid="stSidebar"] p, div[data-testid="stSidebar"] span {
 }
 
 .quiz-question .q-text {
-    color: #f1f5f9;
+    color: var(--text-primary);
     font-size: 1.05rem;
     font-weight: 600;
     margin: 0.3rem 0 0.8rem;
@@ -320,7 +384,7 @@ div[data-testid="stSidebar"] p, div[data-testid="stSidebar"] span {
 .result-wrong { color: #fb7185 !important; font-weight: 600; }
 
 .trace-step {
-    background: rgba(30, 41, 59, 0.5);
+    background: var(--quiz-bg);
     border: 1px solid rgba(99, 102, 241, 0.1);
     border-radius: 10px;
     padding: 0.6rem 0.8rem;
@@ -340,6 +404,76 @@ div[data-testid="stSidebar"] p, div[data-testid="stSidebar"] span {
 .stMarkdown {
     position: relative;
     z-index: 1;
+}
+
+/* ─── Flashcard CSS ─── */
+.flashcard-container {
+    perspective: 1000px;
+    margin-bottom: 1rem;
+}
+
+.flashcard {
+    position: relative;
+    width: 100%;
+    min-height: 160px;
+    cursor: pointer;
+    transition: transform 0.6s;
+    transform-style: preserve-3d;
+}
+
+.flashcard.flipped {
+    transform: rotateY(180deg);
+}
+
+.flashcard-front, .flashcard-back {
+    position: absolute;
+    width: 100%;
+    min-height: 160px;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    border-radius: 14px;
+    padding: 1.2rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.flashcard-front {
+    background: var(--bg-secondary);
+    border: 1px solid var(--card-border);
+}
+
+.flashcard-back {
+    background: var(--bg-secondary);
+    border: 1px solid var(--card-border);
+    transform: rotateY(180deg);
+}
+
+.flashcard-front .card-label {
+    color: #818cf8;
+    font-weight: 700;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+
+.flashcard-front .card-question {
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.flashcard-back .card-answer {
+    color: #4ade80;
+    font-weight: 700;
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.flashcard-back .card-explanation {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -362,7 +496,7 @@ def render_trace(trace_obj):
         st.sidebar.markdown(
             f'<div class="trace-step">'
             f'<span class="phase-label" style="color:#818cf8;">{icon} {step["phase"].upper()}</span><br>'
-            f'<span style="color:#94a3b8;">{step["result"][:150]}</span>'
+            f'<span style="color:var(--text-muted);">{step["result"][:150]}</span>'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -375,7 +509,11 @@ trace = Trace()
 # ─── Input Section ───
 with st.container():
     st.markdown('<div class="glass-card animate-in">', unsafe_allow_html=True)
-    topic = st.text_input("🎯 What do you want to learn?", placeholder="e.g., Photosynthesis, Neural Networks, World War II...")
+    col_topic, col_diff = st.columns([3, 1])
+    with col_topic:
+        topic = st.text_input("🎯 What do you want to learn?", placeholder="e.g., Photosynthesis, Neural Networks, World War II...")
+    with col_diff:
+        difficulty = st.radio("📊 Difficulty", ["Beginner", "Intermediate", "Advanced"], index=1, horizontal=True)
 
     with st.expander("📄 Add context (optional)"):
         notes = st.text_area("Paste notes, background knowledge, or upload text", placeholder="Anything you already know...", height=100)
@@ -388,6 +526,7 @@ with st.container():
             notes = notes + "\n\n--- From PDF ---\n" + st.session_state.pdf_text if notes else st.session_state.pdf_text
 
     if st.button("📂 Load Sample Data", use_container_width=True):
+        st.session_state.current_topic = "Quantum Computing"
         subtopics = ["Introduction & Basics", "Key Mechanisms", "Applications & Impact"]
         research_results = {
             "Introduction & Basics": "**Quantum computing** leverages quantum mechanical phenomena like superposition and entanglement to process information in fundamentally new ways. Unlike classical bits (0 or 1), quantum bits (qubits) can exist in multiple states simultaneously.\n\n**Key concepts:**\n- Superposition: Qubits can be 0, 1, or both\n- Entanglement: Linked qubits share states instantly\n- Quantum gates: Operations that manipulate qubits",
@@ -436,6 +575,7 @@ Near-term applications include quantum-enhanced machine learning, optimization p
         st.session_state.phase = "review"
         st.session_state.quiz_state = {}
         st.session_state.quiz_submitted = False
+        st.session_state.chat_history = []
         st.rerun()
 
     col1, col2 = st.columns([1, 1])
@@ -443,31 +583,26 @@ Near-term applications include quantum-enhanced machine learning, optimization p
         start = st.button("🚀 Start Learning", type="primary", use_container_width=True, disabled=not topic.strip())
     with col2:
         if st.button("🔄 Reset", use_container_width=True):
-            for k in ["quiz_state", "quiz_submitted", "study_data", "phase", "pdf_text"]:
+            for k in ["quiz_state", "quiz_submitted", "study_data", "phase", "pdf_text", "chat_history"]:
                 if k in st.session_state:
                     del st.session_state[k]
             st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ─── Session State ───
-if "quiz_state" not in st.session_state:
-    st.session_state.quiz_state = {}
-if "quiz_submitted" not in st.session_state:
-    st.session_state.quiz_submitted = False
-if "study_data" not in st.session_state:
-    st.session_state.study_data = None
-if "phase" not in st.session_state:
-    st.session_state.phase = "input"
 
 # ─── Agent Execution ───
 if start or st.session_state.phase == "running":
+    st.session_state.current_topic = topic
     st.session_state.phase = "running"
+
+    # Difficulty-aware context passed to plan()
+    diff_notes = f"{notes}\n\n[Difficulty: {difficulty}]" if notes else f"[Difficulty: {difficulty}]"
 
     error_placeholder = st.empty()
     with st.status("🤖 **Agent is working...**", expanded=True) as status:
         try:
             st.write("📋 **Planning** — Breaking topic into subtopics...")
-            subtopics = plan(topic, notes, trace)
+            subtopics = plan(topic, diff_notes, trace)
             st.write(f"✅ Plan complete: **{len(subtopics)}** subtopics identified")
 
             st.write("🔍 **Researching** — Searching the web for each subtopic...")
@@ -526,23 +661,64 @@ if st.session_state.phase == "review" and st.session_state.study_data:
             st.markdown(f"**{i}.** {sub}")
 
     with st.expander("📖 Study Guide", expanded=True):
-        st.markdown(data["guide"])
-        guide_text = data["guide"]
-        st.download_button(
-            "📥 Download Study Guide",
-            guide_text,
-            file_name=f"{topic.replace(' ', '_')}_study_guide.md",
-            mime="text/markdown",
-            use_container_width=True,
-        )
-        pdf_bytes = export_pdf(topic, guide_text).getvalue()
-        st.download_button(
-            "📄 Download PDF",
-            pdf_bytes,
-            file_name=f"{topic.replace(' ', '_')}_study_guide.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-        )
+        tab1, tab2 = st.tabs(["📖 Guide", "💬 AI Chat"])
+
+        with tab1:
+            word_count = len(data["guide"].split())
+            reading_time = max(1, round(word_count / 200))
+            st.markdown(
+                f'<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">'
+                f'<span style="color:var(--text-muted);font-size:0.85rem;">⏱️ ~{reading_time} min read ({word_count} words)</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            guide_text = data["guide"]
+            st.markdown(guide_text)
+            st.download_button(
+                "📥 Download Study Guide",
+                guide_text,
+                file_name=f"{st.session_state.get('current_topic', topic).replace(' ', '_')}_study_guide.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )
+            pdf_bytes = export_pdf(topic if 'topic' in dir() else st.session_state.get('current_topic', ''), guide_text).getvalue()
+            st.download_button(
+                "📄 Download PDF",
+                pdf_bytes,
+                file_name=f"{st.session_state.get('current_topic', topic).replace(' ', '_')}_study_guide.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+
+        with tab2:
+            st.markdown("Ask questions about the study guide.")
+            for msg in st.session_state.chat_history:
+                st.markdown(
+                    f'<div style="background:var(--quiz-bg);border-radius:10px;padding:0.5rem 0.8rem;margin-bottom:0.4rem;">'
+                    f'<span style="color:#818cf8;font-weight:600;">You:</span> {msg["q"]}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f'<div style="background:var(--bg-secondary);border:1px solid var(--card-border);border-radius:10px;padding:0.5rem 0.8rem;margin-bottom:0.8rem;">'
+                    f'<span style="color:#4ade80;font-weight:600;">Tutor:</span> {msg["a"]}</div>',
+                    unsafe_allow_html=True,
+                )
+
+            chat_input = st.text_input("💬 Ask a question...", key="chat_question", placeholder="e.g., Can you explain superposition?")
+            col_send, col_clear = st.columns([1, 1])
+            with col_send:
+                if st.button("Send", type="primary", key="chat_send", use_container_width=True) and chat_input:
+                    with st.spinner("Thinking..."):
+                        try:
+                            answer = answer_question(chat_input, data["guide"], st.session_state.chat_history)
+                            st.session_state.chat_history.append({"q": chat_input, "a": answer})
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+            with col_clear:
+                if st.session_state.chat_history and st.button("🗑️ Clear Chat", key="clear_chat", use_container_width=True):
+                    st.session_state.chat_history = []
+                    st.rerun()
 
     st.markdown("---")
     st.markdown("### ✍️ Quiz")
@@ -579,13 +755,39 @@ if st.session_state.phase == "review" and st.session_state.study_data:
         correct_count = total - len(wrong)
         pct = int(correct_count / total * 100)
         st.markdown(
-            f'<div style="background:rgba(30,41,59,0.6);border:1px solid rgba(99,102,241,0.15);'
+            f'<div style="background:var(--bg-secondary);border:1px solid var(--card-border);'
             f'border-radius:14px;padding:1rem;margin:1rem 0;text-align:center;">'
-            f'<span style="font-size:1.3rem;font-weight:700;">'
+            f'<span style="font-size:1.3rem;font-weight:700;color:var(--text-primary);">'
             f'{"🎉" if pct >= 80 else "📖"} Score: {correct_count}/{total} ({pct}%)'
             f'</span></div>',
             unsafe_allow_html=True,
         )
+
+        # ─── Flashcards Section ───
+        st.markdown("---")
+        st.markdown("### 🃏 Flashcards")
+        st.markdown("Click **Flip** to reveal the answer.")
+        for i, q in enumerate(questions):
+            card_key = f"fc_{i}"
+            flipped = st.session_state.flashcard_flipped.get(card_key, False)
+            card_html = f'''
+            <div class="flashcard-container">
+                <div class="flashcard {"flipped" if flipped else ""}">
+                    <div class="flashcard-front">
+                        <div class="card-label">Question {i+1}</div>
+                        <div class="card-question">{q["question"]}</div>
+                    </div>
+                    <div class="flashcard-back">
+                        <div class="card-answer">✅ {q["options"][q["correct"]]}</div>
+                        <div class="card-explanation">{q.get("explanation", "")}</div>
+                    </div>
+                </div>
+            </div>
+            '''
+            st.markdown(card_html, unsafe_allow_html=True)
+            if st.button(f"🔄 Flip Card {i+1}", key=f"flip_btn_{i}", use_container_width=True):
+                st.session_state.flashcard_flipped[card_key] = not flipped
+                st.rerun()
 
     if not st.session_state.quiz_submitted:
         disabled = len(st.session_state.quiz_state) != len(questions)
@@ -620,7 +822,7 @@ if st.session_state.phase == "review" and st.session_state.study_data:
 
                     st.write("❓ Generating new quiz...")
                     new_guide = data["guide"] + "\n\n## Focused Review\n" + adapt_text
-                    new_questions = generate_quiz(topic, new_guide, count=5, trace=trace)
+                    new_questions = generate_quiz(topic if 'topic' in dir() else st.session_state.get('current_topic', ''), new_guide, count=5, trace=trace)
 
                     status.update(label="✅ Adaptive plan ready!", state="complete")
                 except QuotaExceeded:
@@ -649,10 +851,22 @@ if st.session_state.phase == "review" and st.session_state.study_data:
             st.session_state.wrong = []
             total_q = len(data["questions"])
             correct_count = total_q - len(wrong)
-            add_session(topic, f"{correct_count}/{total_q}", len(data["guide"]), correct_count, total_q)
+            add_session(
+                st.session_state.get("current_topic", topic if 'topic' in dir() else ""),
+                f"{correct_count}/{total_q}",
+                len(data["guide"]),
+                correct_count,
+                total_q,
+            )
             st.rerun()
         else:
-            add_session(topic, f"{len(questions)}/{len(questions)}", len(data["guide"]), len(questions), len(questions))
+            add_session(
+                st.session_state.get("current_topic", topic if 'topic' in dir() else ""),
+                f"{len(questions)}/{len(questions)}",
+                len(data["guide"]),
+                len(questions),
+                len(questions),
+            )
             st.markdown("---")
             st.markdown('<div class="balloon-container">', unsafe_allow_html=True)
             st.balloons()
@@ -660,7 +874,7 @@ if st.session_state.phase == "review" and st.session_state.study_data:
             st.markdown("You answered all questions correctly. Great job!")
             st.markdown('</div>', unsafe_allow_html=True)
 
-render_trace(trace)
+    render_trace(trace)
 
 # ─── History Sidebar ───
 st.sidebar.markdown("---")
@@ -669,16 +883,16 @@ sessions = get_sessions()
 if sessions:
     for s in sessions[:10]:
         st.sidebar.markdown(
-            f'<div style="background:rgba(30,41,59,0.4);border:1px solid rgba(99,102,241,0.1);'
+            f'<div style="background:var(--quiz-bg);border:1px solid var(--card-border);'
             f'border-radius:8px;padding:0.4rem 0.6rem;margin-bottom:0.3rem;font-size:0.8rem;">'
             f'<span style="color:#818cf8;font-weight:600;">{s["topic"][:30]}</span><br>'
-            f'<span style="color:#94a3b8;">{s["date"]} — Score: {s["score"]}</span>'
+            f'<span style="color:var(--text-muted);">{s["date"]} — Score: {s["score"]}</span>'
             f'</div>',
             unsafe_allow_html=True,
         )
 else:
     st.sidebar.markdown("*No study sessions yet*")
 if sessions and st.sidebar.button("🗑️ Clear History", use_container_width=True):
-    from pathlib import Path
-    Path("history.json").write_text("[]", encoding="utf-8")
+    from src.history import HISTORY_FILE
+    HISTORY_FILE.write_text("[]", encoding="utf-8")
     st.rerun()

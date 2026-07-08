@@ -2,4 +2,3 @@
 __pycache__/
 *.pyc
 history.json
-.streamlit/

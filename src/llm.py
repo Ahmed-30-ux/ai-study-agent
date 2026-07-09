@@ -1,10 +1,27 @@
+"""Gemini LLM wrapper with Google Search grounding."""
+
 import os
 import time
+
 from google import genai
 from google.genai import types
 from google.genai import errors as genai_errors
 
-MODEL = os.getenv("LLM_MODEL", "gemini-2.0-flash")
+
+def _get_secret(key: str) -> str | None:
+    val = os.getenv(key)
+    if val:
+        return val
+    try:
+        import streamlit as st
+        return st.secrets.get(key)
+    except Exception:
+        return None
+
+
+def _get_model() -> str:
+    return _get_secret("LLM_MODEL") or "gemini-2.0-flash"
+
 
 _client = None
 
@@ -12,9 +29,15 @@ _client = None
 def _get_client():
     global _client
     if _client is None:
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        api_key = _get_secret("GEMINI_API_KEY") or _get_secret("OPENAI_API_KEY")
+        if not api_key:
+            raise LLMError(
+                "No API key found. Set GEMINI_API_KEY in .env (local) or "
+                "Streamlit Cloud Secrets (Settings > Secrets)."
+            )
         _client = genai.Client(api_key=api_key)
     return _client
+
 
 SYSTEM_BASE = "You are an AI study agent that helps students learn topics deeply."
 
@@ -35,7 +58,7 @@ def call(system_prompt: str, user_prompt: str, temperature: float = 0.7) -> str:
     ]
     try:
         response = _get_client().models.generate_content(
-            model=MODEL,
+            model=_get_model(),
             contents=contents,
             config=types.GenerateContentConfig(
                 temperature=temperature,

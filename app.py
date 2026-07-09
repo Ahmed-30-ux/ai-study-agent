@@ -644,8 +644,9 @@ if start or st.session_state.phase == "running":
         except QuotaExceeded:
             status.update(label="⚠️ API quota exceeded", state="error")
             error_placeholder.error(
-                "**Gemini API quota exceeded.** The free tier has limited requests per day. "
-                "Try again later, or load sample data to see a demo."
+                "**Gemini API quota exceeded.** The free tier is limited. "
+                "Get a fresh key at https://aistudio.google.com/apikey"
+                " and paste it in the sidebar."
             )
             st.stop()
         except LLMError as e:
@@ -761,6 +762,8 @@ if st.session_state.phase == "review" and st.session_state.study_data:
                             cs = cheat_sheet(data["guide"], st.session_state.get("current_topic", topic))
                             st.session_state.cheat_sheet_text = cs
                             st.rerun()
+                        except QuotaExceeded:
+                            st.error("API quota exceeded. Get a fresh key at https://aistudio.google.com/apikey")
                         except Exception as e:
                             st.error(f"Error: {e}")
             if "cheat_sheet_text" in st.session_state and st.session_state.cheat_sheet_text is not None:

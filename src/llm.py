@@ -64,9 +64,12 @@ def call(system_prompt: str, user_prompt: str, temperature: float = 0.7) -> str:
             ),
         )
         text = response.text
-        if not text and response.candidates:
-            text = response.candidates[0].content.parts[0].text
-        return text or ""
+        if not text:
+            try:
+                text = response.candidates[0].content.parts[0].text
+            except (IndexError, AttributeError, TypeError):
+                text = ""
+        return text
     except genai_errors.ClientError as e:
         err = str(e)
         if "429" in err or "RESOURCE_EXHAUSTED" in err:

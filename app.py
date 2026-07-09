@@ -746,7 +746,6 @@ if st.session_state.phase == "review" and st.session_state.study_data:
                     with st.spinner("Generating condensed summary..."):
                         try:
                             cs = cheat_sheet(data["guide"], st.session_state.get("current_topic", topic))
-                            st.write(f"DEBUG: cs length = {len(cs)}, repr = {repr(cs[:100])}")
                             st.session_state.cheat_sheet_text = cs
                         except QuotaExceeded:
                             st.error("API quota exceeded. Get a fresh key at https://aistudio.google.com/apikey")
@@ -758,7 +757,7 @@ if st.session_state.phase == "review" and st.session_state.study_data:
                 st.markdown(cs_text)
                 st.download_button(
                     "📥 Download Cheat Sheet",
-                    st.session_state.cheat_sheet_text,
+                    cs_text,
                     file_name=f"{st.session_state.get('current_topic', topic).replace(' ', '_')}_cheatsheet.md",
                     mime="text/markdown",
                     use_container_width=True,

@@ -54,15 +54,12 @@ class LLMError(Exception):
 
 def call(system_prompt: str, user_prompt: str, temperature: float = 0.7) -> str:
     full_system = f"{SYSTEM_BASE}\n{system_prompt}"
-    contents = [
-        types.Content(role="user", parts=[types.Part.from_text(text=full_system)]),
-        types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]),
-    ]
     try:
         response = _get_client().models.generate_content(
             model=_get_model(),
-            contents=contents,
+            contents=user_prompt,
             config=types.GenerateContentConfig(
+                system_instruction=full_system,
                 temperature=temperature,
             ),
         )

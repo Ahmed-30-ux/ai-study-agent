@@ -683,14 +683,17 @@ if st.session_state.phase == "review" and st.session_state.study_data:
                 mime="text/markdown",
                 use_container_width=True,
             )
-            pdf_bytes = export_pdf(topic if 'topic' in dir() else st.session_state.get('current_topic', ''), guide_text).getvalue()
-            st.download_button(
-                "📄 Download PDF",
-                pdf_bytes,
-                file_name=f"{st.session_state.get('current_topic', topic).replace(' ', '_')}_study_guide.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-            )
+            try:
+                pdf_bytes = export_pdf(topic if 'topic' in dir() else st.session_state.get('current_topic', ''), guide_text).getvalue()
+                st.download_button(
+                    "📄 Download PDF",
+                    pdf_bytes,
+                    file_name=f"{st.session_state.get('current_topic', topic).replace(' ', '_')}_study_guide.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
+            except Exception as e:
+                st.warning(f"⚠️ PDF generation failed: {e}")
 
         with tab2:
             st.markdown("### 🧠 Topic Mind Map")

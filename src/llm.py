@@ -31,18 +31,20 @@ def _get_model() -> str:
 
 
 _client = None
+_client_key = None
 
 
 def _get_client():
-    global _client
-    if _client is None:
-        api_key = _get_secret("GEMINI_API_KEY") or _get_secret("OPENAI_API_KEY")
-        if not api_key:
-            raise LLMError(
-                "No API key found. Set GEMINI_API_KEY in .env (local) or "
-                "Streamlit Cloud Secrets (Settings > Secrets)."
-            )
+    global _client, _client_key
+    api_key = _get_secret("GEMINI_API_KEY") or _get_secret("OPENAI_API_KEY")
+    if not api_key:
+        raise LLMError(
+            "No API key found. Set GEMINI_API_KEY in .env (local) or "
+            "Streamlit Cloud Secrets (Settings > Secrets)."
+        )
+    if _client is None or api_key != _client_key:
         _client = genai.Client(api_key=api_key)
+        _client_key = api_key
     return _client
 
 

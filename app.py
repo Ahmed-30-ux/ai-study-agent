@@ -747,7 +747,6 @@ if st.session_state.phase == "review" and st.session_state.study_data:
                         try:
                             cs = cheat_sheet(data["guide"], st.session_state.get("current_topic", topic))
                             st.session_state.cheat_sheet_text = cs
-                            st.rerun()
                         except QuotaExceeded:
                             st.error("API quota exceeded. Get a fresh key at https://aistudio.google.com/apikey")
                         except Exception as e:

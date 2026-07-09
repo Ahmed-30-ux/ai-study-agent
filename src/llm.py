@@ -27,7 +27,7 @@ def _get_secret(key: str) -> str | None:
 
 
 def _get_model() -> str:
-    return _get_secret("LLM_MODEL") or "gemini-2.0-flash"
+    return _get_secret("LLM_MODEL") or "gemini-3.1-flash-lite"
 
 
 _client = None
@@ -70,8 +70,9 @@ def call(system_prompt: str, user_prompt: str, temperature: float = 0.7) -> str:
             model=_get_model(),
             contents=contents,
             config=types.GenerateContentConfig(
-                temperature=temperature,
-            ),
+                    temperature=temperature,
+                    tools=[types.Tool(google_search=types.GoogleSearch())],
+                ),
         )
         return response.text
     except genai_errors.ClientError as e:

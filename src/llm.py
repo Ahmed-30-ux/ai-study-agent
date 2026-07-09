@@ -63,17 +63,16 @@ def call(system_prompt: str, user_prompt: str, temperature: float = 0.7) -> str:
             model=_get_model(),
             contents=contents,
             config=types.GenerateContentConfig(
-                    temperature=temperature,
-                    tools=[types.Tool(google_search=types.GoogleSearch())],
-                ),
+                temperature=temperature,
+            ),
         )
         return response.text
     except genai_errors.ClientError as e:
         err = str(e)
         if "429" in err or "RESOURCE_EXHAUSTED" in err:
             raise QuotaExceeded(
-                "Gemini API quota exceeded for this key. "
-                "Get a fresh free key at https://aistudio.google.com/apikey"
+                f"Gemini API quota exceeded (key starts with '{_client_key[:8] if _client_key else '?'}...'). "
+                "Get a free AIzaSy key at https://aistudio.google.com/apikey"
             ) from e
         raise LLMError(f"Gemini API error: {err}") from e
     except Exception as e:

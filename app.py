@@ -4,6 +4,7 @@ load_dotenv()
 import streamlit as st
 import time
 import math
+import html
 
 from src.agent import (
     Trace, plan, research, synthesize,
@@ -695,10 +696,12 @@ if st.session_state.phase == "review" and st.session_state.study_data:
             except Exception as e:
                 st.warning(f"⚠️ PDF generation failed: {e}")
 
+import html
+
         with tab2:
             st.markdown("### 🧠 Topic Mind Map")
             subtopics_list = data.get("subtopics", [])
-            topic_name = st.session_state.get("current_topic", topic)
+            topic_name = html.escape(st.session_state.get("current_topic", topic))
             mind_map_html = f"""
             <div style="width:100%;height:400px;position:relative;overflow:hidden;border-radius:12px;background:radial-gradient(circle at center, rgba(99,102,241,0.05) 0%, transparent 70%);">
             <svg width="100%" height="100%" viewBox="0 0 800 400" style="position:absolute;top:0;left:0;">
@@ -714,6 +717,7 @@ if st.session_state.phase == "review" and st.session_state.study_data:
             angles = [0, 72, 144, 216, 288]
             colors = ["#818cf8", "#4ade80", "#f472b6", "#fbbf24", "#34d399"]
             for i, sub in enumerate(subtopics_list[:5]):
+                sub_escaped = html.escape(sub)
                 angle = angles[i]
                 rad = angle * 3.14159 / 180
                 x2 = 400 + 180 * math.cos(rad)
@@ -722,8 +726,8 @@ if st.session_state.phase == "review" and st.session_state.study_data:
                     <line x1="400" y1="200" x2="{x2:.0f}" y2="{y2:.0f}" stroke="{colors[i]}" stroke-width="1.5" opacity="0.4"/>
                     <circle cx="{x2:.0f}" cy="{y2:.0f}" r="30" fill="{colors[i]}22" stroke="{colors[i]}" stroke-width="1.5"/>
                     <text x="{x2:.0f}" y="{y2:.0f}" text-anchor="middle" fill="#e2e8f0" font-size="8" font-weight="600">
-                        <tspan x="{x2:.0f}" dy="-3">{sub[:12]}</tspan>
-                        <tspan x="{x2:.0f}" dy="10">{sub[12:24]}</tspan>
+                        <tspan x="{x2:.0f}" dy="-3">{sub_escaped[:12]}</tspan>
+                        <tspan x="{x2:.0f}" dy="10">{sub_escaped[12:24]}</tspan>
                     </text>
                 """
             mind_map_html += "</svg></div>"

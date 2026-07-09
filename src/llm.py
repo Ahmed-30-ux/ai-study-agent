@@ -9,13 +9,6 @@ from google.genai import errors as genai_errors
 
 
 def _get_secret(key: str) -> str | None:
-    if key == "GEMINI_API_KEY":
-        try:
-            import streamlit as st
-            if st.session_state.get("api_key_input"):
-                return st.session_state.api_key_input
-        except Exception:
-            pass
     val = os.getenv(key)
     if val:
         return val

@@ -42,6 +42,20 @@ with st.sidebar:
         st.session_state.theme = new_theme
         st.rerun()
 
+    # ─── API Key input (fallback if not set in env/secrets) ───
+    if "api_key_input" not in st.session_state:
+        st.session_state.api_key_input = ""
+    api_key = st.text_input(
+        "🔑 Gemini API Key",
+        value=st.session_state.api_key_input,
+        type="password",
+        placeholder="Paste your key here",
+        help="Only needed if not set in Streamlit Secrets. Get a free key at aistudio.google.com/apikey",
+    )
+    if api_key != st.session_state.api_key_input:
+        st.session_state.api_key_input = api_key
+        st.rerun()
+
 # ─── Theme CSS Variables ───
 is_dark = st.session_state.theme == "dark"
 bg_primary = "#0b0e17" if is_dark else "#f0f2f6"

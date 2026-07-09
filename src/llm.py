@@ -14,6 +14,8 @@ def _get_secret(key: str) -> str | None:
         return val
     try:
         import streamlit as st
+        if key == "GEMINI_API_KEY" and st.session_state.get("api_key_input"):
+            return st.session_state.api_key_input
         return st.secrets.get(key)
     except Exception:
         return None

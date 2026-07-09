@@ -696,8 +696,6 @@ if st.session_state.phase == "review" and st.session_state.study_data:
             except Exception as e:
                 st.warning(f"⚠️ PDF generation failed: {e}")
 
-import html
-
         with tab2:
             st.markdown("### 🧠 Topic Mind Map")
             subtopics_list = data.get("subtopics", [])

@@ -741,7 +741,8 @@ if st.session_state.phase == "review" and st.session_state.study_data:
 
         with tab3:
             st.markdown("### 📋 Cheat Sheet")
-            if "cheat_sheet_text" not in st.session_state:
+            if not st.session_state.get("cheat_sheet_text"):
+                st.session_state.pop("cheat_sheet_text", None)
                 if st.button("✨ Generate Cheat Sheet", use_container_width=True):
                     with st.spinner("Generating condensed summary..."):
                         try:
@@ -751,13 +752,11 @@ if st.session_state.phase == "review" and st.session_state.study_data:
                             st.error("API quota exceeded. Get a fresh key at https://aistudio.google.com/apikey")
                         except Exception as e:
                             st.error(f"Error: {e}")
-                            st.session_state.cheat_sheet_text = ""
-            if "cheat_sheet_text" in st.session_state:
-                cs_text = st.session_state.cheat_sheet_text or ""
-                st.markdown(cs_text)
+            if st.session_state.get("cheat_sheet_text"):
+                st.markdown(st.session_state.cheat_sheet_text)
                 st.download_button(
                     "📥 Download Cheat Sheet",
-                    cs_text,
+                    st.session_state.cheat_sheet_text,
                     file_name=f"{st.session_state.get('current_topic', topic).replace(' ', '_')}_cheatsheet.md",
                     mime="text/markdown",
                     use_container_width=True,

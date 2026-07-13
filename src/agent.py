@@ -146,6 +146,35 @@ Student: {question}"""
     return result
 
 
+def generate_flashcards(guide: str, topic: str) -> list[dict]:
+    prompt = f"""Based on this study guide about "{topic}", create 10 flashcards.
+Each flashcard should have a term/concept on the front and a clear definition/explanation on the back.
+
+Study guide:
+{guide[:4000]}
+
+Return ONLY a JSON array of objects with format:
+[
+  {{
+    "front": "Term or concept",
+    "back": "Clear definition or explanation"
+  }}
+]
+
+Make them concise but informative. Cover the most important concepts."""
+    result = llm.call(
+        "You are a flashcard creator. Make memorable study cards.",
+        prompt,
+        temperature=0.5,
+    )
+    text = result.strip().removeprefix("```json").removesuffix("```").strip()
+    try:
+        cards = json.loads(text)
+    except json.JSONDecodeError:
+        cards = []
+    return cards if isinstance(cards, list) else []
+
+
 def cheat_sheet(guide: str, topic: str) -> str:
     prompt = f"""Condense this study guide on "{topic}" into a one-page cheat sheet.
 

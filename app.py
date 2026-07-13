@@ -8,7 +8,7 @@ import html
 
 from src.agent import (
     Trace, plan, research, synthesize,
-    generate_quiz, adapt, answer_question, cheat_sheet
+    generate_quiz, adapt, answer_question, cheat_sheet, generate_flashcards
 )
 from src.llm import QuotaExceeded, LLMError
 from src.pdf_utils import export_pdf, extract_text_from_pdf
@@ -21,6 +21,7 @@ for key, default in [
     ("quiz_state", {}), ("quiz_submitted", False), ("study_data", None),
     ("phase", "input"), ("pdf_text", None), ("current_topic", None),
     ("wrong", []), ("chat_history", []), ("flashcard_flipped", {}),
+    ("flashcards", []), ("flashcard_index", 0),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -665,7 +666,7 @@ if st.session_state.phase == "review" and st.session_state.study_data:
             st.markdown(f"**{i}.** {sub}")
 
     with st.expander("📖 Study Guide", expanded=True):
-        tab1, tab2, tab3, tab4 = st.tabs(["📖 Guide", "🧠 Mind Map", "📋 Cheat Sheet", "💬 AI Chat"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📖 Guide", "🧠 Mind Map", "🃏 Flashcards", "📋 Cheat Sheet", "💬 AI Chat"])
 
         with tab1:
             word_count = len(data["guide"].split())
@@ -740,6 +741,64 @@ if st.session_state.phase == "review" and st.session_state.study_data:
                 st.info("Generate a study guide first to see the mind map.")
 
         with tab3:
+            st.markdown("### 🃏 Flashcards")
+            if st.button("✨ Generate Flashcards", use_container_width=True):
+                with st.spinner("Creating flashcards..."):
+                    try:
+                        cards = generate_flashcards(data["guide"], st.session_state.get("current_topic", topic))
+                        st.session_state.flashcards = cards
+                        st.session_state.flashcard_index = 0
+                        st.session_state.flashcard_flipped = {}
+                    except QuotaExceeded:
+                        st.error("API quota exceeded. Get a fresh key at https://aistudio.google.com/apikey")
+                    except Exception as e:
+                        st.error(f"Error generating flashcards: {e}")
+            cards = st.session_state.get("flashcards", [])
+            if cards:
+                idx = st.session_state.get("flashcard_index", 0)
+                card = cards[idx]
+                flipped = st.session_state.flashcard_flipped.get("fc", False)
+                card_html = f'''
+                <div class="flashcard-container" style="max-width:500px;margin:0 auto;">
+                    <div class="flashcard {"flipped" if flipped else ""}" style="min-height:220px;">
+                        <div class="flashcard-front">
+                            <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.5rem;">
+                                Card {idx+1} of {len(cards)}
+                            </div>
+                            <div style="font-size:1.1rem;font-weight:600;line-height:1.5;">
+                                {html.escape(card["front"])}
+                            </div>
+                        </div>
+                        <div class="flashcard-back">
+                            <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.5rem;">
+                                Card {idx+1} of {len(cards)}
+                            </div>
+                            <div style="font-size:1rem;line-height:1.5;">
+                                {html.escape(card["back"])}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                '''
+                st.markdown(card_html, unsafe_allow_html=True)
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col1:
+                    if st.button("◀ Prev", use_container_width=True, disabled=idx == 0):
+                        st.session_state.flashcard_index = idx - 1
+                        st.session_state.flashcard_flipped["fc"] = False
+                        st.rerun()
+                with col2:
+                    btn_label = "🔄 Flip" if not flipped else "🔄 Back"
+                    if st.button(btn_label, use_container_width=True):
+                        st.session_state.flashcard_flipped["fc"] = not flipped
+                        st.rerun()
+                with col3:
+                    if st.button("Next ▶", use_container_width=True, disabled=idx >= len(cards) - 1):
+                        st.session_state.flashcard_index = idx + 1
+                        st.session_state.flashcard_flipped["fc"] = False
+                        st.rerun()
+
+        with tab4:
             st.markdown("### 📋 Cheat Sheet")
             if not st.session_state.get("cheat_sheet_text"):
                 st.session_state.pop("cheat_sheet_text", None)
@@ -762,7 +821,7 @@ if st.session_state.phase == "review" and st.session_state.study_data:
                     use_container_width=True,
                 )
 
-        with tab4:
+        with tab5:
             st.markdown("Ask questions about the study guide.")
             for msg in st.session_state.chat_history:
                 st.markdown(

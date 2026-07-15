@@ -22,6 +22,9 @@ for key, default in [
     ("phase", "input"), ("pdf_text", None), ("current_topic", None),
     ("wrong", []), ("chat_history", []), ("flashcard_flipped", {}),
     ("flashcards", []), ("flashcard_index", 0),
+    ("app_mode", "study"), ("classroom_data", {}), ("user_role", None),
+    ("teacher_name", ""), ("student_name", ""), ("current_class", None),
+    ("class_code_input", ""),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
@@ -508,6 +511,208 @@ def render_trace(trace_obj):
 
 
 trace = Trace()
+
+# ─── Mode Selector ───
+mode = st.radio("📌 Mode", ["📚 Study Agent", "🏫 Classroom"], horizontal=True, index=0 if st.session_state.app_mode == "study" else 1)
+new_mode = "study" if "Study" in mode else "classroom"
+if new_mode != st.session_state.app_mode:
+    st.session_state.app_mode = new_mode
+    st.rerun()
+
+# ─── Classroom Mode ───
+if st.session_state.app_mode == "classroom":
+    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+    st.markdown("### 🏫 AI Classroom")
+    cd = st.session_state.classroom_data
+
+    if not st.session_state.user_role:
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("👨‍🏫 I'm a Teacher", use_container_width=True):
+                st.session_state.user_role = "teacher"
+                st.rerun()
+        with col2:
+            if st.button("🎓 I'm a Student", use_container_width=True):
+                st.session_state.user_role = "student"
+                st.rerun()
+    else:
+        if st.button("⬅ Switch Role", use_container_width=True):
+            st.session_state.user_role = None
+            st.session_state.teacher_name = ""
+            st.session_state.student_name = ""
+            st.rerun()
+
+    # ─── Teacher Mode ───
+    if st.session_state.user_role == "teacher":
+        if not st.session_state.teacher_name:
+            name = st.text_input("Your name", placeholder="e.g., Sir Arslan")
+            if name and st.button("Continue", type="primary"):
+                st.session_state.teacher_name = name
+                st.rerun()
+        else:
+            st.success(f"👨‍🏫 Welcome, {st.session_state.teacher_name}!")
+            teacher = st.session_state.teacher_name
+
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if st.button("➕ Create New Class", use_container_width=True):
+                    import random, string
+                    code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+                    cd[code] = {
+                        "name": f"Class {len(cd)+1}",
+                        "teacher": teacher,
+                        "announcements": [],
+                        "assignments": [],
+                        "students": [],
+                        "topic": "",
+                        "study_guide": "",
+                    }
+                    st.session_state.classroom_data = cd
+                    st.session_state.current_class = code
+                    st.rerun()
+
+            with col_b:
+                existing = [c for c in cd if cd[c]["teacher"] == teacher]
+                if existing:
+                    selected = st.selectbox("Switch to class", existing, format_func=lambda c: f"{cd[c]['name']} ({c})")
+                    if selected:
+                        st.session_state.current_class = selected
+
+            if st.session_state.current_class:
+                code = st.session_state.current_class
+                cls = cd[code]
+
+                # Class settings
+                new_name = st.text_input("Class name", value=cls["name"])
+                if new_name != cls["name"]:
+                    cls["name"] = new_name
+                    st.rerun()
+
+                new_topic = st.text_input("📖 Study topic", value=cls["topic"], placeholder="e.g., Physics, Biology...")
+                if new_topic != cls["topic"]:
+                    cls["topic"] = new_topic
+                    st.rerun()
+
+                st.info(f"📌 **Join code:** `{code}` — Share this with your students")
+                st.markdown(f"**Students enrolled:** {len(cls['students'])}")
+
+                tab_a, tab_b, tab_c = st.tabs(["📢 Announcements", "📝 Assignments", "📊 Class"])
+                with tab_a:
+                    st.markdown("### Post Announcement")
+                    ann_text = st.text_area("Announcement text", placeholder="Write your announcement...", key="ann_input")
+                    if st.button("Post", type="primary") and ann_text:
+                        cls["announcements"].append({"text": ann_text, "date": time.strftime("%Y-%m-%d %H:%M")})
+                        st.rerun()
+                    if cls["announcements"]:
+                        for a in reversed(cls["announcements"]):
+                            st.markdown(f'<div style="background:var(--quiz-bg);border-radius:10px;padding:0.8rem;margin-bottom:0.5rem;"><small>{a["date"]}</small><br>{a["text"]}</div>', unsafe_allow_html=True)
+
+                with tab_b:
+                    st.markdown("### Create Assignment")
+                    title = st.text_input("Assignment title", key="asn_title")
+                    desc = st.text_area("Description", key="asn_desc")
+                    due = st.date_input("Due date")
+                    if st.button("Create", type="primary") and title:
+                        cls["assignments"].append({"title": title, "desc": desc, "due": str(due), "submissions": {}})
+                        st.rerun()
+                    if cls["assignments"]:
+                        for asn in cls["assignments"]:
+                            sub_count = len(asn["submissions"])
+                            st.markdown(f'<div style="background:var(--quiz-bg);border-radius:10px;padding:0.8rem;margin-bottom:0.5rem;"><strong>{asn["title"]}</strong><br><small>Due: {asn["due"]} | Submissions: {sub_count}</small><br>{asn["desc"]}</div>', unsafe_allow_html=True)
+
+                with tab_c:
+                    st.markdown("**Students enrolled:**")
+                    if cls["students"]:
+                        for s in cls["students"]:
+                            st.markdown(f"- {s}")
+                    else:
+                        st.markdown("*No students yet*")
+
+                    st.markdown("---")
+                    if cls["topic"] and st.button("📚 Generate Study Material", use_container_width=True):
+                        st.session_state.current_topic = cls["topic"]
+                        st.session_state.app_mode = "study"
+                        st.rerun()
+
+    # ─── Student Mode ───
+    elif st.session_state.user_role == "student":
+        if not st.session_state.student_name:
+            name = st.text_input("Your name", placeholder="e.g., Ahmed")
+            if name and st.button("Continue", type="primary"):
+                st.session_state.student_name = name
+                st.rerun()
+        else:
+            st.success(f"🎓 Welcome, {st.session_state.student_name}!")
+
+            if not st.session_state.current_class:
+                code_input = st.text_input("Enter class code", placeholder="e.g., ABC123", key="join_code")
+                if st.button("Join Class", type="primary") and code_input:
+                    if code_input.upper() in cd:
+                        if st.session_state.student_name not in cd[code_input.upper()]["students"]:
+                            cd[code_input.upper()]["students"].append(st.session_state.student_name)
+                        st.session_state.current_class = code_input.upper()
+                        st.rerun()
+                    else:
+                        st.error("Invalid class code!")
+            else:
+                code = st.session_state.current_class
+                cls = cd.get(code)
+                if not cls:
+                    st.error("Class not found")
+                    st.session_state.current_class = None
+                    st.rerun()
+                else:
+                    if st.button("⬅ Leave Class"):
+                        st.session_state.current_class = None
+                        st.rerun()
+                    st.success(f"📚 **{cls['name']}** — Teacher: {cls['teacher']}")
+
+                    tab_a, tab_b, tab_c = st.tabs(["📢 Announcements", "📝 Assignments", "🤖 AI Tutor"])
+                    with tab_a:
+                        if cls["announcements"]:
+                            for a in reversed(cls["announcements"]):
+                                st.markdown(f'<div style="background:var(--quiz-bg);border-radius:10px;padding:0.8rem;margin-bottom:0.5rem;"><small>{a["date"]}</small><br>{a["text"]}</div>', unsafe_allow_html=True)
+                        else:
+                            st.info("No announcements yet")
+
+                    with tab_b:
+                        if cls["assignments"]:
+                            for i, asn in enumerate(cls["assignments"]):
+                                with st.expander(f"📝 {asn['title']} (Due: {asn['due']})"):
+                                    st.markdown(asn["desc"])
+                                    sub_key = f"sub_{i}_{st.session_state.student_name}"
+                                    if sub_key in asn["submissions"]:
+                                        st.success(f"✅ Submitted: {asn['submissions'][sub_key]}")
+                                    else:
+                                        ans = st.text_area("Your answer", key=f"ans_{i}_{code}")
+                                        if st.button("Submit", key=f"sub_btn_{i}") and ans:
+                                            asn["submissions"][sub_key] = ans
+                                            st.rerun()
+                        else:
+                            st.info("No assignments yet")
+
+                    with tab_c:
+                        st.markdown("Ask AI questions about your class topic.")
+                        if cls.get("topic"):
+                            st.info(f"📖 Topic: **{cls['topic']}**")
+                            import html as html_mod
+                            for msg in st.session_state.chat_history:
+                                st.markdown(f'<div style="background:var(--quiz-bg);border-radius:10px;padding:0.5rem 0.8rem;margin-bottom:0.4rem;"><span style="color:#818cf8;font-weight:600;">You:</span> {msg["q"]}</div>', unsafe_allow_html=True)
+                                st.markdown(f'<div style="background:var(--bg-secondary);border:1px solid var(--card-border);border-radius:10px;padding:0.5rem 0.8rem;margin-bottom:0.8rem;"><span style="color:#4ade80;font-weight:600;">Tutor:</span> {msg["a"]}</div>', unsafe_allow_html=True)
+                            q = st.text_input("Ask a question about this topic...", key="class_chat")
+                            if st.button("Ask", type="primary") and q:
+                                with st.spinner("Thinking..."):
+                                    try:
+                                        answer = answer_question(q, cls.get("study_guide", f"Topic: {cls['topic']}"), st.session_state.chat_history)
+                                        st.session_state.chat_history.append({"q": q, "a": answer})
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error: {e}")
+                        else:
+                            st.info("Your teacher hasn't set a study topic yet.")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
 
 # ─── Input Section ───
 with st.container():
